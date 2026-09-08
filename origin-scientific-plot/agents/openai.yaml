@@ -1,0 +1,4 @@
+interface:
+  display_name: "Origin Scientific Plot"
+  short_description: "Publication-ready Origin figures"
+  default_prompt: "Use $origin-scientific-plot to create a publication-ready Origin figure from the MATLAB Excel data."

@@ -1,0 +1,147 @@
+# Origin scientific plotting style — V5
+# Single source of truth for the user's default scientific figure style.
+# Per-figure requests may override these values without changing this file.
+
+version: 5
+
+units:
+  geometry: mm
+  line_width: pt
+  font_size: pt
+  tick_length: pt
+
+data_defaults:
+  format: xlsx
+  sheet_structure: paired_xy
+  metadata_rows:
+    short_name: 1
+    designation: 2
+    curve_id: 3
+    N_in: 4
+    variable: 5
+    condition: 6
+    separator: 7
+    data_start: 8
+
+canvas:
+  width_mm: 245.0
+  height_mm: 250.0
+  background: white
+
+single_panel:
+  width_mm: 110.0
+  height_mm: 85.0
+  position:
+    anchor: center
+    offset_x_mm: 0.0
+    offset_y_mm: 0.0
+
+axes:
+  frame:
+    left: true
+    right: true
+    top: true
+    bottom: true
+
+  line_width_pt: 1.5
+
+  scale_defaults:
+    x: linear
+    y: linear
+    rescale: auto
+
+  ticks:
+    direction: in
+    major:
+      enabled: true
+      line_width_pt: 1.5
+      length_pt: 8.0
+    minor:
+      enabled: false
+
+
+  tick_labels:
+    font_family: Times New Roman
+    size_pt: 26.0
+    show_bottom: true
+    show_top: false
+    show_left: true
+    show_right: false
+
+  grid:
+    major_x: false
+    major_y: false
+    minor_x: false
+    minor_y: false
+
+curves:
+  default_plot_type: line
+  line_width_pt: 2.0
+  line_style: solid
+  color_sequence:
+    - red
+    - blue
+    - green
+
+  # Reserved for later use; null is safe because V5 never assumes these exist.
+  symbol:
+    enabled: false
+    type_sequence: null
+    size_pt: null
+
+text:
+  font_family: Times New Roman
+
+  axis_title:
+    size_pt: 26.0
+    bold: false
+
+  tick_label:
+    size_pt: 26.0
+
+  legend:
+    enabled: auto
+    size_pt: 26.0
+    frame: false
+    position: auto
+
+figure_labels:
+  enabled: false
+  font_family: Times New Roman
+  size_pt: 26.0
+  bold: true
+
+export:
+  save_origin_project: true
+  project_extension: opju
+
+  pdf:
+    enabled: false
+    vector: true
+    overwrite: true
+    embed_fonts: null
+    crop_to_page: true
+
+behavior:
+  require_absolute_geometry: true
+  user_request_overrides_defaults: true
+  preserve_editable_origin_project: true
+  warn_on_fallback: true
+
+
+latex:
+  axis_titles:
+    enabled: true
+    font_size_pt: 20.0
+    y_font_size_pt: 20.0
+    x_formula: auto
+    y_formula: auto
+  extra_legend:
+    enabled: true
+    font_size_pt: 20.0
+    as_individual_labels: true
+    start_pos_percent:
+      x: 73
+      y: 24
+    dy_percent: 5
+    position: blank_area
