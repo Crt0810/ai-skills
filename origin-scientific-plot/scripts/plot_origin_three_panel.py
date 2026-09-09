@@ -68,23 +68,6 @@ import pandas as pd
 import yaml
 
 
-def display_parameter(name: str) -> str:
-    key = str(name or "N_in").strip().lower().replace("_", "").replace("{", "").replace("}", "")
-    return r"N_{in}" if key == "nin" else str(name or "N_in")
-
-
-def latex_parameter(name: str) -> str:
-    key = str(name or "N_in").strip().lower().replace("_", "").replace("{", "").replace("}", "")
-    return r"N_{\rm{in}}" if key == "nin" else str(name or "N_in")
-
-
-def legend_visible(legend_cfg: Dict[str, Any], series_list: List[SeriesInfo]) -> bool:
-    enabled = legend_cfg.get("enabled", "auto")
-    if isinstance(enabled, bool):
-        return enabled
-    return len(series_list) > 1
-
-
 # ---------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------
@@ -100,13 +83,11 @@ class SeriesInfo:
     condition: str
     x: np.ndarray
     y: np.ndarray
-    parameter_name: str = "N_in"
 
     @property
     def legend_label(self) -> str:
-        if not math.isfinite(self.n_in):
-            return f"Curve {self.curve_id}"
-        return f"{display_parameter(self.parameter_name)} = {self.n_in:g}"
+        # You can change the exact legend wording here if needed.
+        return rf"N_{{in}} = {self.n_in:g}"
 
     @property
     def x_title(self) -> str:
@@ -161,15 +142,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "curves": {
         "default_plot_type": "line",
         "line_width_pt": 2.0,
-        "line_style": "solid",
-        "color_sequence": ["red", "blue", "green"],
+        "color_sequence": ["#FB6F6F", "#5E72FF", "#00BB0C", "#9D3CFF", "#FF8C00", "#000000"],
+        "line_style_sequence": [0, 6, 7, 1, 4, 5],
         "symbol": {"enabled": False, "type_sequence": None, "size_pt": None},
     },
     "text": {
         "font_family": "Times New Roman",
         "axis_title": {"size_pt": 26.0, "bold": False},
         "tick_label": {"size_pt": 26.0},
-        "legend": {"enabled": "auto", "parameter_name": "N_in", "size_pt": 26.0, "frame": False, "position": "auto"},
+        "legend": {"enabled": "auto", "size_pt": 26.0, "frame": False, "position": "auto"},
     },
     "export": {
         "save_origin_project": True,
@@ -300,12 +281,28 @@ def validate_config(cfg: Dict[str, Any]) -> None:
             f"Resolved left={left:g} mm, top={top:g} mm."
         )
 
+    default_colors = ["#FB6F6F", "#5E72FF", "#00BB0C", "#9D3CFF", "#FF8C00", "#000000"]
+    default_styles = [0, 6, 7, 1, 4, 5]
     colors = cfg.get("curves", {}).get("color_sequence")
     if not isinstance(colors, list) or len(colors) == 0:
-        cfg.setdefault("curves", {})["color_sequence"] = ["red", "blue", "green"]
+        cfg.setdefault("curves", {})["color_sequence"] = list(default_colors)
     else:
         cleaned = [str(c).strip() for c in colors if str(c).strip()]
-        cfg["curves"]["color_sequence"] = cleaned or ["red", "blue", "green"]
+        cfg["curves"]["color_sequence"] = cleaned or list(default_colors)
+
+    styles = cfg.get("curves", {}).get("line_style_sequence")
+    if not isinstance(styles, list) or not styles:
+        cfg.setdefault("curves", {})["line_style_sequence"] = list(default_styles)
+    else:
+        cleaned_s = []
+        for s in styles:
+            try:
+                v = int(s)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= v <= 7:
+                cleaned_s.append(v)
+        cfg["curves"]["line_style_sequence"] = cleaned_s or list(default_styles)
 
 
 def mm_to_inch(mm: float) -> float:
@@ -488,16 +485,12 @@ def create_extra_latex_legend(op, cfg: Dict[str, Any], series_list: List[SeriesI
     """
     latex_cfg = cfg.get("latex", {})
     extra_cfg = latex_cfg.get("extra_legend", {})
-    legend_cfg = cfg.get("text", {}).get("legend", {})
 
     try:
         op.lt_exec("legend.showframe=0;")
     except Exception as e:
         print(f"[WARN] Could not remove built-in legend frame: {e}")
 
-    if not legend_visible(legend_cfg, series_list):
-        print("[LATEX LEGEND] legend disabled; skipped standalone LaTeX labels")
-        return
     if not cfg_bool(extra_cfg.get("enabled"), True):
         return
 
@@ -508,10 +501,7 @@ def create_extra_latex_legend(op, cfg: Dict[str, Any], series_list: List[SeriesI
     dy = cfg_float(extra_cfg.get("dy_percent"), 5.0)
 
     for i, s in enumerate(series_list, start=1):
-        if math.isfinite(s.n_in):
-            formula = f"{latex_parameter(s.parameter_name)} = {s.n_in:g}"
-        else:
-            formula = rf"Curve\ {s.curve_id}"
+        formula = rf"N_{{\rm{{in}}}} = {s.n_in:g}" if math.isfinite(s.n_in) else rf"Curve\ {s.curve_id}"
         obj_name = f"LegendLatex{i}"
         ypos = py + (i - 1) * dy
         cmds = [
@@ -581,12 +571,6 @@ def parse_standardized_sheet(excel_path: Path, sheet_name: str) -> List[SeriesIn
     n_in_row = df.iloc[3, :].tolist()
     variable_row = df.iloc[4, :].tolist()
     condition_row = df.iloc[5, :].tolist()
-    parameter_name = "N_in"
-    for cell in df.iloc[6, :].tolist():
-        text = normalize_text(cell)
-        if text.lower().startswith("parameter_name="):
-            parameter_name = text.split("=", 1)[1].strip() or "N_in"
-            break
 
     # Numeric data begins at row 8 (index 7)
     data = df.iloc[7:, :].copy()
@@ -633,7 +617,6 @@ def parse_standardized_sheet(excel_path: Path, sheet_name: str) -> List[SeriesIn
                     condition=condition,
                     x=x,
                     y=y,
-                    parameter_name=parameter_name,
                 )
             )
             col += 2
@@ -826,7 +809,10 @@ def apply_origin_style(op, graph, layer, plots, cfg: Dict[str, Any],
     legend_size = cfg_float(legend_cfg.get("size_pt"), 26.0)
     color_seq = curves_cfg.get("color_sequence")
     if not isinstance(color_seq, list) or not color_seq:
-        color_seq = ["red", "blue", "green"]
+        color_seq = ["#FB6F6F", "#5E72FF", "#00BB0C", "#9D3CFF", "#FF8C00", "#000000"]
+    style_seq = curves_cfg.get("line_style_sequence")
+    if not isinstance(style_seq, list) or not style_seq:
+        style_seq = [0, 6, 7, 1, 4, 5]
 
     try:
         graph.activate()
@@ -929,38 +915,28 @@ def apply_origin_style(op, graph, layer, plots, cfg: Dict[str, Any],
         print(f"[WARN] Could not read back axis settings: {e}")
 
     # --------------------------------------------------------------
-    # Built-in legend: create/update only when legends are meaningful.
+    # Built-in legend: keep it, no frame.
     # --------------------------------------------------------------
-    if legend_visible(legend_cfg, series_list):
-        legend_lines = []
-        for plot_index, s in enumerate(series_list, start=1):
-            label = s.legend_label if math.isfinite(s.n_in) else f"Curve {s.curve_id}"
-            legend_lines.append(f"\\l({plot_index}) {label}")
-        legend_text = "\n".join(legend_lines)
+    legend_lines = []
+    for plot_index, s in enumerate(series_list, start=1):
+        label = s.legend_label if math.isfinite(s.n_in) else f"Curve {s.curve_id}"
+        legend_lines.append(f"\\l({plot_index}) {label}")
+    legend_text = "\n".join(legend_lines)
 
-        try:
-            lgnd = layer.label("Legend")
-            if lgnd is not None:
-                lgnd.text = legend_text
-                lgnd.set_int("fsize", int(round(legend_size)))
-                lgnd.set_int("showframe", 0)
-            else:
-                print("[WARN] Could not find built-in legend; skipped text update")
-        except Exception as e:
-            print(f"[WARN] Could not fully customize built-in legend: {e}")
-    else:
-        try:
-            lgnd = layer.label("Legend")
-            if lgnd is not None:
-                lgnd.remove()
-        except Exception as e:
-            print(f"[WARN] Could not remove unused legend: {e}")
+    try:
+        lgnd = layer.label("Legend")
+        lgnd.text = legend_text
+        lgnd.set_int("fsize", int(round(legend_size)))
+        lgnd.set_int("showframe", 0)
+    except Exception as e:
+        print(f"[WARN] Could not fully customize built-in legend: {e}")
 
     # --------------------------------------------------------------
     # Curves
     # --------------------------------------------------------------
     for i, plot in enumerate(plots):
         color_name = str(color_seq[i % len(color_seq)]).strip() or "black"
+        style_idx = int(style_seq[i % len(style_seq)])
 
         try:
             plot.color = color_name
@@ -971,6 +947,11 @@ def apply_origin_style(op, graph, layer, plots, cfg: Dict[str, Any],
             plot.set_float("line.width", curve_lw)
         except Exception as e:
             print(f"[WARN] Could not set {curve_lw:g} pt line width for plot {i+1}: {e}")
+
+        try:
+            plot.set_cmd(f"-d {style_idx}")
+        except Exception as e:
+            print(f"[WARN] Could not set line style {style_idx} for plot {i+1}: {e}")
 
 
 
@@ -1044,11 +1025,15 @@ LAYOUT_DEFAULTS: Dict[str, Any] = {
     "layout_page_width_mm": 245.0,
     "layout_page_height_mm": 250.0,
 
-    # Source graph pages have the SAME width so their outer edges align
-    # automatically when stacked in one Layout column.
+    # Deprecated keys kept for config compatibility. The single-graph-page
+    # three-layer backend (build_three_panel_graph) uses only:
+    #   layout_page_width_mm, layout_page_height_mm,
+    #   top_panel_width_mm, top_panel_height_mm, horizontal_gap_mm,
+    #   bottom_panel_width_mm, bottom_panel_height_mm, layout_vertical_gap,
+    #   panel_labels.
     "source_page_width_mm": 220.0,
 
-    # Top source graph: A + B
+    # Top graph row: A + B
     "top_panel_width_mm": 85.0,
     "top_panel_height_mm": 73.0,
     "horizontal_gap_mm": 20.0,
@@ -1057,8 +1042,8 @@ LAYOUT_DEFAULTS: Dict[str, Any] = {
     "bottom_panel_width_mm": 190.0,
     "bottom_panel_height_mm": 55.0,
 
-    # g2layout spacing/margins. These are deliberately symmetric:
-    # left == right, top == bottom.
+    # Deprecated margin keys kept for config compatibility (unused by the
+    # single-page backend). Outer margins are implicit in the mm geometry.
     "layout_left_margin": 10,
     "layout_right_margin": 10,
     "layout_top_margin": 10,
@@ -1186,39 +1171,55 @@ def add_panel_label(op, layer_index: int, text: str,
 
 
 def set_page_physical_size(op, width_mm: float, height_mm: float) -> None:
+    # page.kar is "Keep Aspect Ratio" (1=on). It must be disabled, otherwise
+    # setting page.height rescales page.width proportionally and the intended
+    # physical size is silently changed (e.g. 222x100 becomes 290x100).
     op.lt_exec(
+        "page.kar=0;"
         f"page.width=page.resx*{width_mm/25.4:.12g};"
         f"page.height=page.resy*{height_mm/25.4:.12g};"
     )
 
 
-def fit_source_page_height_only(op) -> None:
-    """
-    Keep source page width fixed, but fit its height tightly around all graph
-    objects.  This is important: both source graph pages retain the SAME width,
-    so their left/right edges align in the final one-column Layout.
-    """
-    # pfit2l: direction=1 means Height Only; go=1 includes all graph objects.
-    op.lt_exec("pfit2l margin:=0 borderwid:=2 direction:=1 go:=1;")
-
-
-def build_top_ab_graph(
+def build_three_panel_graph(
     op,
     wks_a, series_a,
     wks_b, series_b,
+    wks_c, series_c,
     cfg: Dict[str, Any],
     layout_cfg: Dict[str, Any],
     figure_name: str,
 ):
-    page_w = cfg_float(layout_cfg.get("source_page_width_mm"), 220.0)
+    """
+    Build ONE graph page with three layers and deterministic mm geometry.
+
+    The A+B group sits in row 1; C spans row 2 with the SAME left/right edges
+    as the A+B group, so all three panels share one right edge by construction
+    (no g2layout / Layout page involved -- g2layout scales each source graph
+    independently and cannot guarantee edge alignment):
+
+        A: (27.5,  58, 85, 73)   right = 112.5
+        B: (132.5, 58, 85, 73)   right = 217.5
+        C: (27.5, 137, 190, 55)  right = 217.5
+
+    Page = layout_page_width_mm x layout_page_height_mm (245x250), the whole
+    A+B+C group is centered both horizontally and vertically on the page.
+    """
+    page_w = cfg_float(layout_cfg.get("layout_page_width_mm"), 245.0)
+    page_h = cfg_float(layout_cfg.get("layout_page_height_mm"), 250.0)
     top_w = cfg_float(layout_cfg.get("top_panel_width_mm"), 85.0)
     top_h = cfg_float(layout_cfg.get("top_panel_height_mm"), 73.0)
+    bot_w = cfg_float(layout_cfg.get("bottom_panel_width_mm"), 190.0)
+    bot_h = cfg_float(layout_cfg.get("bottom_panel_height_mm"), 55.0)
     hgap = cfg_float(layout_cfg.get("horizontal_gap_mm"), 20.0)
+    vgap = cfg_float(layout_cfg.get("layout_vertical_gap"), 6)
 
     group_w = 2.0 * top_w + hgap
+    group_h = top_h + vgap + bot_h
     left_a = (page_w - group_w) / 2.0
+    top_a = (page_h - group_h) / 2.0
     left_b = left_a + top_w + hgap
-    top_y = 35.0
+    top_c = top_a + top_h + vgap
 
     try:
         gp = op.new_graph(template="Line")
@@ -1226,36 +1227,35 @@ def build_top_ab_graph(
         gp = op.new_graph()
 
     try:
-        gp.set_name(f"{figure_name}_TopAB")
+        gp.set_name(f"{figure_name}_ThreePanel")
     except Exception:
         pass
 
     layer_a = gp[0]
     layer_b = gp.add_layer(type=0)
+    layer_c = gp.add_layer(type=0)
 
     plots_a = add_series_to_layer(layer_a, wks_a, series_a, "A")
     plots_b = add_series_to_layer(layer_b, wks_b, series_b, "B")
+    plots_c = add_series_to_layer(layer_c, wks_c, series_c, "C")
 
     gp.activate()
-    set_page_physical_size(op, page_w, 170.0)
+    set_page_physical_size(op, page_w, page_h)
 
-    op.lt_exec("page.active=1;")
-    op.lt_exec(
-        "layer.unit=4;"
-        f"layer.left={left_a:.12g};"
-        f"layer.top={top_y:.12g};"
-        f"layer.width={top_w:.12g};"
-        f"layer.height={top_h:.12g};"
-    )
-
-    op.lt_exec("page.active=2;")
-    op.lt_exec(
-        "layer.unit=4;"
-        f"layer.left={left_b:.12g};"
-        f"layer.top={top_y:.12g};"
-        f"layer.width={top_w:.12g};"
-        f"layer.height={top_h:.12g};"
-    )
+    geoms = [
+        (1, left_a, top_a, top_w, top_h),
+        (2, left_b, top_a, top_w, top_h),
+        (3, left_a, top_c, bot_w, bot_h),
+    ]
+    for idx, l, t, w, h in geoms:
+        op.lt_exec(f"page.active={idx};")
+        op.lt_exec(
+            "layer.unit=4;"
+            f"layer.left={l:.12g};"
+            f"layer.top={t:.12g};"
+            f"layer.width={w:.12g};"
+            f"layer.height={h:.12g};"
+        )
     op.lt_exec("page -afu1;")
 
     op.lt_exec("page.active=1;")
@@ -1268,181 +1268,34 @@ def build_top_ab_graph(
     create_latex_axis_titles(op, cfg, series_b)
     create_extra_latex_legend(op, cfg, series_b)
 
+    op.lt_exec("page.active=3;")
+    apply_origin_style(op, gp, layer_c, plots_c, cfg, series_c)
+    create_latex_axis_titles(op, cfg, series_c)
+    create_extra_latex_legend(op, cfg, series_c)
+
     labels = layout_cfg.get("panel_labels", {})
     add_panel_label(op, 1, str(labels.get("a") or "(a)"),
                     "PanelLabelA", layout_cfg)
     add_panel_label(op, 2, str(labels.get("b") or "(b)"),
                     "PanelLabelB", layout_cfg)
-
-    # Fit vertical page extent only. Width stays exactly source_page_width_mm.
-    gp.activate()
-    fit_source_page_height_only(op)
-
-    try:
-        actual_w = op.lt_float("page.width/page.resx*25.4")
-        actual_h = op.lt_float("page.height/page.resy*25.4")
-        print(
-            f"[TOP SOURCE PAGE] width={actual_w:.3f} mm, "
-            f"height={actual_h:.3f} mm"
-        )
-    except Exception:
-        pass
-
-    return gp
-
-
-def build_bottom_c_graph(
-    op,
-    wks_c, series_c,
-    cfg: Dict[str, Any],
-    layout_cfg: Dict[str, Any],
-    figure_name: str,
-):
-    page_w = cfg_float(layout_cfg.get("source_page_width_mm"), 220.0)
-    panel_w = cfg_float(layout_cfg.get("bottom_panel_width_mm"), 190.0)
-    panel_h = cfg_float(layout_cfg.get("bottom_panel_height_mm"), 55.0)
-
-    left = (page_w - panel_w) / 2.0
-    top = 35.0
-
-    try:
-        gp = op.new_graph(template="Line")
-    except Exception:
-        gp = op.new_graph()
-
-    try:
-        gp.set_name(f"{figure_name}_BottomC")
-    except Exception:
-        pass
-
-    layer = gp[0]
-    plots = add_series_to_layer(layer, wks_c, series_c, "C")
-
-    gp.activate()
-    set_page_physical_size(op, page_w, 150.0)
-    op.lt_exec(
-        "layer.unit=4;"
-        f"layer.left={left:.12g};"
-        f"layer.top={top:.12g};"
-        f"layer.width={panel_w:.12g};"
-        f"layer.height={panel_h:.12g};"
-    )
-    op.lt_exec("page -afu1;")
-
-    apply_origin_style(op, gp, layer, plots, cfg, series_c)
-    create_latex_axis_titles(op, cfg, series_c)
-    create_extra_latex_legend(op, cfg, series_c)
-
-    labels = layout_cfg.get("panel_labels", {})
-    add_panel_label(op, 1, str(labels.get("c") or "(c)"),
+    add_panel_label(op, 3, str(labels.get("c") or "(c)"),
                     "PanelLabelC", layout_cfg)
 
-    gp.activate()
-    fit_source_page_height_only(op)
-
     try:
         actual_w = op.lt_float("page.width/page.resx*25.4")
         actual_h = op.lt_float("page.height/page.resy*25.4")
         print(
-            f"[BOTTOM SOURCE PAGE] width={actual_w:.3f} mm, "
+            f"[THREE-PANEL GRAPH PAGE] width={actual_w:.3f} mm, "
             f"height={actual_h:.3f} mm"
         )
     except Exception:
         pass
 
     return gp
-
-
-def compose_layout_page(op, top_graph, bottom_graph,
-                        layout_cfg: Dict[str, Any],
-                        figure_name: str) -> str:
-    """
-    Use Origin's g2layout X-Function.
-
-    The final Layout is ONE COLUMN / TWO ROWS:
-      row 1 = complete A+B graph page
-      row 2 = complete C graph page
-
-    Since both source pages have exactly the same width and Keep Graph Aspect
-    Ratio is enabled, their left/right outer edges align naturally.
-
-    Most importantly, the outer Layout margins are symmetric:
-      left == right
-      top  == bottom
-    so the complete three-panel composition is centered on the Layout page.
-    """
-    page_w = cfg_float(layout_cfg.get("layout_page_width_mm"), 245.0)
-    page_h = cfg_float(layout_cfg.get("layout_page_height_mm"), 250.0)
-
-    lm = cfg_float(layout_cfg.get("layout_left_margin"), 10)
-    rm = cfg_float(layout_cfg.get("layout_right_margin"), 10)
-    tm = cfg_float(layout_cfg.get("layout_top_margin"), 10)
-    bm = cfg_float(layout_cfg.get("layout_bottom_margin"), 10)
-    ygap = cfg_float(layout_cfg.get("layout_vertical_gap"), 6)
-
-    # These are intentionally symmetric.
-    if abs(lm - rm) > 1e-9 or abs(tm - bm) > 1e-9:
-        raise RuntimeError(
-            "Layout symmetry check failed: left/right and top/bottom margins "
-            "must be equal."
-        )
-
-    try:
-        top_name = top_graph.name
-        if callable(top_name):
-            top_name = top_name()
-    except Exception:
-        top_name = f"{figure_name}_TopAB"
-
-    try:
-        bottom_name = bottom_graph.name
-        if callable(bottom_name):
-            bottom_name = bottom_name()
-    except Exception:
-        bottom_name = f"{figure_name}_BottomC"
-
-    top_name = str(top_name)
-    bottom_name = str(bottom_name)
-
-    # Graph list is newline-separated as required by g2layout.
-    cmd = (
-        'g2layout option:=specified '
-        f'graphs:="{top_name}"+char(10)$+"{bottom_name}" '
-        'row:=2 col:=1 '
-        'aspectratio:=1 '
-        'xgap:=0 '
-        f'ygap:={ygap:.12g} '
-        f'leftmg:={lm:.12g} rightmg:={rm:.12g} '
-        f'topmg:={tm:.12g} bottommg:={bm:.12g} '
-        'portrait:=portrait '
-        f'width:={page_w:.12g} height:={page_h:.12g} unit:=mm;'
-    )
-
-    print("[G2LAYOUT COMMAND]")
-    print(cmd)
-
-    op.lt_exec(cmd)
-
-    # g2layout creates and activates the new Layout page.
-    try:
-        layout_name = op.lt_str("%H")
-    except Exception:
-        layout_name = "Layout1"
-
-    print(
-        "[LAYOUT CENTER RULE] "
-        f"left_margin={lm:g}, right_margin={rm:g}; "
-        f"top_margin={tm:g}, bottom_margin={bm:g}; "
-        f"page={page_w:g}x{page_h:g} mm"
-    )
-    print(f"[LAYOUT ACTIVE PAGE] {layout_name}")
-
-    return str(layout_name)
 
 
 def export_active_layout_pdf(op, out_dir: Path, figure_name: str) -> Optional[Path]:
     pdf_path = out_dir / f"{figure_name}.pdf"
-
     # expGraph also exports Layout pages when the Layout is active.
     out_path = str(out_dir).replace("\\", "\\\\")
     fname = figure_name.replace('"', '\\"')
@@ -1492,27 +1345,26 @@ def plot_three_panel_layout(
         op, excel_c, sheet_c, figure_name, "C"
     )
 
-    top_graph = build_top_ab_graph(
-        op, wks_a, series_a, wks_b, series_b,
-        cfg, layout_cfg, figure_name
-    )
-    bottom_graph = build_bottom_c_graph(
-        op, wks_c, series_c,
+    graph = build_three_panel_graph(
+        op, wks_a, series_a, wks_b, series_b, wks_c, series_c,
         cfg, layout_cfg, figure_name
     )
 
-    layout_name = compose_layout_page(
-        op, top_graph, bottom_graph, layout_cfg, figure_name
-    )
-
-    # Save the full editable Origin project. Source graph pages remain editable,
-    # and the Layout contains linked graph pictures.
+    # Save the full editable Origin project.
     opju_path = out_dir / f"{figure_name}.opju"
     op.save(str(opju_path))
 
     pdf_path = export_active_layout_pdf(op, out_dir, figure_name)
 
-    print(f"[LAYOUT RESULT] layout={layout_name}")
+    graph_name = "graph"
+    try:
+        gname = graph.name
+        if callable(gname):
+            gname = gname()
+        graph_name = str(gname)
+    except Exception:
+        pass
+    print(f"[LAYOUT RESULT] graph={graph_name}")
     print(f"[LAYOUT RESULT] OPJU={opju_path}")
     print(f"[LAYOUT RESULT] PDF={pdf_path or '[export not verified]'}")
 
@@ -1616,12 +1468,6 @@ def main() -> None:
     print("Three-panel Layout plotting finished.")
     print(f"OPJU : {outputs.get('opju') or '[not saved / not found]'}")
     print(f"PDF  : {outputs.get('pdf') or '[not exported / not found]'}")
-
-    try:
-        import originpro as op
-        op.exit()
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":

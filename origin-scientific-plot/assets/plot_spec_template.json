@@ -1,0 +1,24 @@
+{
+  "layout": "single | two | three",
+  "figure_name": "Fig1",
+  "source": "path/to/raw.xlsx",
+  "sheet": "Data",
+  "output_excel": "path/to/standardized.xlsx",
+  "condition": "free text, e.g. A = 1,2,3",
+  "panels": {
+    "a": {
+      "x_column": 1,
+      "y_columns": [2, 3],
+      "N_in": [1, 2],
+      "x_variable": "x",
+      "y_variable": "y"
+    },
+    "b": {
+      "x_column": 1,
+      "y_columns": [2],
+      "N_in": [3],
+      "x_variable": "x",
+      "y_variable": "y"
+    }
+  }
+}

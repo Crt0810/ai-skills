@@ -68,23 +68,6 @@ import pandas as pd
 import yaml
 
 
-def display_parameter(name: str) -> str:
-    key = str(name or "N_in").strip().lower().replace("_", "").replace("{", "").replace("}", "")
-    return r"N_{in}" if key == "nin" else str(name or "N_in")
-
-
-def latex_parameter(name: str) -> str:
-    key = str(name or "N_in").strip().lower().replace("_", "").replace("{", "").replace("}", "")
-    return r"N_{\rm{in}}" if key == "nin" else str(name or "N_in")
-
-
-def legend_visible(legend_cfg: Dict[str, Any], series_list: List[SeriesInfo]) -> bool:
-    enabled = legend_cfg.get("enabled", "auto")
-    if isinstance(enabled, bool):
-        return enabled
-    return len(series_list) > 1
-
-
 # ---------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------
@@ -100,13 +83,11 @@ class SeriesInfo:
     condition: str
     x: np.ndarray
     y: np.ndarray
-    parameter_name: str = "N_in"
 
     @property
     def legend_label(self) -> str:
-        if not math.isfinite(self.n_in):
-            return f"Curve {self.curve_id}"
-        return f"{display_parameter(self.parameter_name)} = {self.n_in:g}"
+        # You can change the exact legend wording here if needed.
+        return rf"N_{{in}} = {self.n_in:g}"
 
     @property
     def x_title(self) -> str:
@@ -161,15 +142,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "curves": {
         "default_plot_type": "line",
         "line_width_pt": 2.0,
-        "line_style": "solid",
-        "color_sequence": ["red", "blue", "green"],
+        "color_sequence": ["#FB6F6F", "#5E72FF", "#00BB0C", "#9D3CFF", "#FF8C00", "#000000"],
+        "line_style_sequence": [0, 6, 7, 1, 4, 5],
         "symbol": {"enabled": False, "type_sequence": None, "size_pt": None},
     },
     "text": {
         "font_family": "Times New Roman",
         "axis_title": {"size_pt": 26.0, "bold": False},
         "tick_label": {"size_pt": 26.0},
-        "legend": {"enabled": "auto", "parameter_name": "N_in", "size_pt": 26.0, "frame": False, "position": "auto"},
+        "legend": {"enabled": "auto", "size_pt": 26.0, "frame": False, "position": "auto"},
     },
     "export": {
         "save_origin_project": True,
@@ -300,12 +281,28 @@ def validate_config(cfg: Dict[str, Any]) -> None:
             f"Resolved left={left:g} mm, top={top:g} mm."
         )
 
+    default_colors = ["#FB6F6F", "#5E72FF", "#00BB0C", "#9D3CFF", "#FF8C00", "#000000"]
+    default_styles = [0, 6, 7, 1, 4, 5]
     colors = cfg.get("curves", {}).get("color_sequence")
     if not isinstance(colors, list) or len(colors) == 0:
-        cfg.setdefault("curves", {})["color_sequence"] = ["red", "blue", "green"]
+        cfg.setdefault("curves", {})["color_sequence"] = list(default_colors)
     else:
         cleaned = [str(c).strip() for c in colors if str(c).strip()]
-        cfg["curves"]["color_sequence"] = cleaned or ["red", "blue", "green"]
+        cfg["curves"]["color_sequence"] = cleaned or list(default_colors)
+
+    styles = cfg.get("curves", {}).get("line_style_sequence")
+    if not isinstance(styles, list) or not styles:
+        cfg.setdefault("curves", {})["line_style_sequence"] = list(default_styles)
+    else:
+        cleaned_s = []
+        for s in styles:
+            try:
+                v = int(s)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= v <= 7:
+                cleaned_s.append(v)
+        cfg["curves"]["line_style_sequence"] = cleaned_s or list(default_styles)
 
 
 def mm_to_inch(mm: float) -> float:
@@ -488,16 +485,12 @@ def create_extra_latex_legend(op, cfg: Dict[str, Any], series_list: List[SeriesI
     """
     latex_cfg = cfg.get("latex", {})
     extra_cfg = latex_cfg.get("extra_legend", {})
-    legend_cfg = cfg.get("text", {}).get("legend", {})
 
     try:
         op.lt_exec("legend.showframe=0;")
     except Exception as e:
         print(f"[WARN] Could not remove built-in legend frame: {e}")
 
-    if not legend_visible(legend_cfg, series_list):
-        print("[LATEX LEGEND] legend disabled; skipped standalone LaTeX labels")
-        return
     if not cfg_bool(extra_cfg.get("enabled"), True):
         return
 
@@ -508,10 +501,7 @@ def create_extra_latex_legend(op, cfg: Dict[str, Any], series_list: List[SeriesI
     dy = cfg_float(extra_cfg.get("dy_percent"), 5.0)
 
     for i, s in enumerate(series_list, start=1):
-        if math.isfinite(s.n_in):
-            formula = f"{latex_parameter(s.parameter_name)} = {s.n_in:g}"
-        else:
-            formula = rf"Curve\ {s.curve_id}"
+        formula = rf"N_{{\rm{{in}}}} = {s.n_in:g}" if math.isfinite(s.n_in) else rf"Curve\ {s.curve_id}"
         obj_name = f"LegendLatex{i}"
         ypos = py + (i - 1) * dy
         cmds = [
@@ -581,12 +571,6 @@ def parse_standardized_sheet(excel_path: Path, sheet_name: str) -> List[SeriesIn
     n_in_row = df.iloc[3, :].tolist()
     variable_row = df.iloc[4, :].tolist()
     condition_row = df.iloc[5, :].tolist()
-    parameter_name = "N_in"
-    for cell in df.iloc[6, :].tolist():
-        text = normalize_text(cell)
-        if text.lower().startswith("parameter_name="):
-            parameter_name = text.split("=", 1)[1].strip() or "N_in"
-            break
 
     # Numeric data begins at row 8 (index 7)
     data = df.iloc[7:, :].copy()
@@ -633,7 +617,6 @@ def parse_standardized_sheet(excel_path: Path, sheet_name: str) -> List[SeriesIn
                     condition=condition,
                     x=x,
                     y=y,
-                    parameter_name=parameter_name,
                 )
             )
             col += 2
@@ -826,7 +809,10 @@ def apply_origin_style(op, graph, layer, plots, cfg: Dict[str, Any],
     legend_size = cfg_float(legend_cfg.get("size_pt"), 26.0)
     color_seq = curves_cfg.get("color_sequence")
     if not isinstance(color_seq, list) or not color_seq:
-        color_seq = ["red", "blue", "green"]
+        color_seq = ["#FB6F6F", "#5E72FF", "#00BB0C", "#9D3CFF", "#FF8C00", "#000000"]
+    style_seq = curves_cfg.get("line_style_sequence")
+    if not isinstance(style_seq, list) or not style_seq:
+        style_seq = [0, 6, 7, 1, 4, 5]
 
     try:
         graph.activate()
@@ -929,38 +915,28 @@ def apply_origin_style(op, graph, layer, plots, cfg: Dict[str, Any],
         print(f"[WARN] Could not read back axis settings: {e}")
 
     # --------------------------------------------------------------
-    # Built-in legend: create/update only when legends are meaningful.
+    # Built-in legend: keep it, no frame.
     # --------------------------------------------------------------
-    if legend_visible(legend_cfg, series_list):
-        legend_lines = []
-        for plot_index, s in enumerate(series_list, start=1):
-            label = s.legend_label if math.isfinite(s.n_in) else f"Curve {s.curve_id}"
-            legend_lines.append(f"\\l({plot_index}) {label}")
-        legend_text = "\n".join(legend_lines)
+    legend_lines = []
+    for plot_index, s in enumerate(series_list, start=1):
+        label = s.legend_label if math.isfinite(s.n_in) else f"Curve {s.curve_id}"
+        legend_lines.append(f"\\l({plot_index}) {label}")
+    legend_text = "\n".join(legend_lines)
 
-        try:
-            lgnd = layer.label("Legend")
-            if lgnd is not None:
-                lgnd.text = legend_text
-                lgnd.set_int("fsize", int(round(legend_size)))
-                lgnd.set_int("showframe", 0)
-            else:
-                print("[WARN] Could not find built-in legend; skipped text update")
-        except Exception as e:
-            print(f"[WARN] Could not fully customize built-in legend: {e}")
-    else:
-        try:
-            lgnd = layer.label("Legend")
-            if lgnd is not None:
-                lgnd.remove()
-        except Exception as e:
-            print(f"[WARN] Could not remove unused legend: {e}")
+    try:
+        lgnd = layer.label("Legend")
+        lgnd.text = legend_text
+        lgnd.set_int("fsize", int(round(legend_size)))
+        lgnd.set_int("showframe", 0)
+    except Exception as e:
+        print(f"[WARN] Could not fully customize built-in legend: {e}")
 
     # --------------------------------------------------------------
     # Curves
     # --------------------------------------------------------------
     for i, plot in enumerate(plots):
         color_name = str(color_seq[i % len(color_seq)]).strip() or "black"
+        style_idx = int(style_seq[i % len(style_seq)])
 
         try:
             plot.color = color_name
@@ -971,6 +947,11 @@ def apply_origin_style(op, graph, layer, plots, cfg: Dict[str, Any],
             plot.set_float("line.width", curve_lw)
         except Exception as e:
             print(f"[WARN] Could not set {curve_lw:g} pt line width for plot {i+1}: {e}")
+
+        try:
+            plot.set_cmd(f"-d {style_idx}")
+        except Exception as e:
+            print(f"[WARN] Could not set line style {style_idx} for plot {i+1}: {e}")
 
 
 
@@ -1481,12 +1462,6 @@ def main() -> None:
     print("Two-panel Origin plotting finished.")
     print(f"OPJU : {outputs.get('opju') or '[not saved / not found]'}")
     print(f"PDF  : {outputs.get('pdf') or '[not exported / not found]'}")
-
-    try:
-        import originpro as op
-        op.exit()
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":

@@ -77,11 +77,22 @@ axes:
 curves:
   default_plot_type: line
   line_width_pt: 2.0
-  line_style: solid
+
+  # Six-color sequence: red / blue / green / purple / orange / black.
+  # Color #5 (orange) is a default pick (#FF8C00); change it freely.
   color_sequence:
-    - red
-    - blue
-    - green
+    - "#FB6F6F"   # 红
+    - "#5E72FF"   # 蓝
+    - "#00BB0C"   # 绿
+    - "#9D3CFF"   # 紫
+    - "#FF8C00"   # 橙
+    - "#000000"   # 黑
+
+  # Origin LabTalk line-style indices (set name -d #):
+  # 0 solid, 1 dash, 2 dot, 3 dash-dot, 4 dash-dot-dot,
+  # 5 short dash, 6 short dot, 7 short dash-dot
+  # Sequence: solid, short dot, short dash-dot, dash, dash-dot-dot, short dash
+  line_style_sequence: [0, 6, 7, 1, 4, 5]
 
   # Reserved for later use; null is safe because V5 never assumes these exist.
   symbol:
@@ -116,7 +127,7 @@ export:
   project_extension: opju
 
   pdf:
-    enabled: false
+    enabled: true
     vector: true
     overwrite: true
     embed_fonts: null
