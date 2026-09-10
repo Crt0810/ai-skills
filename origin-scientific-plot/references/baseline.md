@@ -2,11 +2,14 @@
 
 # Origin Scientific Plotting — Stable Baseline
 
-Version: v2.2 (2026-09-09)
+Version: v2.3 (2026-09-10)
 Status: current accepted baseline for all Origin plotting work.
 
 > Revision log
 >
+> - v2.3 (2026-09-10): added three-panel arrangement "a-top" (full-width A on
+>   top, B/C pair on bottom) via --arrangement {ab-top,a-top}; default ab-top
+>   unchanged (sections 11, 13a, 25).
 > - v2.2 (2026-09-09): added §27a source-layout specification (AI-friendly Excel
 >   output and minimum layout requirements); corrected the §27 stale note —
 >   scripts\prepare_origin_data.py exists, is shipped in the Skill and is frozen;
@@ -438,7 +441,9 @@ No Layout Page, no g2layout, no pfit2l. Deterministic mm geometry guarantees
 that the bottom panel's left/right edges align exactly with the A+B group
 above by construction.
 
-The accepted layout is conceptually:
+Two arrangements are supported (CLI flag `--arrangement`):
+
+- `ab-top` (default): A/B on the top row, full-width C on the bottom:
 
 ```text
 (a)        (b)
@@ -446,7 +451,14 @@ The accepted layout is conceptually:
       (c)
 ```
 
-where panel (c) is a long lower panel.
+- `a-top`: full-width A on the top, B/C on the bottom row (vertical flip;
+  geometry in section 13a):
+
+```text
+      (a)
+
+(b)        (c)
+```
 
 This architecture was verified end to end: after building Test3, reading the
 layer geometry back from the saved .opju gives
@@ -542,6 +554,34 @@ Fig(c) right = 27.5 + 190 = 217.5 mm
 ```
 
 Fig(b) right == Fig(c) right → the A+B group and C share the same right edge.
+
+---
+
+# 13a. Three-Panel Arrangement "a-top" (A on top, B/C on bottom)
+
+`--arrangement a-top` is the vertical flip of the default ab-top arrangement.
+The group width/height, page size, gaps and the shared-right-edge guarantee
+are identical; only the two rows are exchanged.
+
+```text
+final graph page: 245 × 250 mm
+row 1 (full width): A = 190 × 55 mm
+row 2 (pair):       B = C = 85 × 73 mm
+horizontal gap: 20 mm; vertical gap: 6 mm
+```
+
+The group is still 190 mm wide and 134 mm tall, so left_a = 27.5 mm and
+top_a = 58.0 mm are unchanged; the second row starts at 58 + 55 + 6 = 119 mm:
+
+```text
+Layer A: (27.5,  58.0, 190, 55)  right = 217.5
+Layer B: (27.5, 119.0,  85, 73)  right = 112.5
+Layer C: (132.5,119.0,  85, 73)  right = 217.5
+```
+
+A right == C right → the full-width top panel and the B+C pair share the same
+right edge by construction. The default remains `ab-top`; CLI calls without
+`--arrangement` keep the original behavior.
 
 ---
 
@@ -914,6 +954,7 @@ plot_origin_three_panel.py (three):
   --excel-a --sheet-a (required)
   --excel-b --sheet-b (optional, default None)
   --excel-c --sheet-c (optional, default None)
+  --arrangement ab-top|a-top (optional, default ab-top; section 13a)
 ```
 
 Per-panel outputs (two/three panels) are combined into one final figure by the backend.

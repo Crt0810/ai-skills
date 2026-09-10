@@ -1189,18 +1189,27 @@ def build_three_panel_graph(
     cfg: Dict[str, Any],
     layout_cfg: Dict[str, Any],
     figure_name: str,
+    arrangement: str = "ab-top",
 ):
     """
     Build ONE graph page with three layers and deterministic mm geometry.
 
-    The A+B group sits in row 1; C spans row 2 with the SAME left/right edges
-    as the A+B group, so all three panels share one right edge by construction
-    (no g2layout / Layout page involved -- g2layout scales each source graph
-    independently and cannot guarantee edge alignment):
+    All three panels share one right edge by construction (no g2layout /
+    Layout page involved -- g2layout scales each source graph independently
+    and cannot guarantee edge alignment).
+
+    arrangement="ab-top" (default): A+B pair on row 1, C full-width on row 2:
 
         A: (27.5,  58, 85, 73)   right = 112.5
         B: (132.5, 58, 85, 73)   right = 217.5
         C: (27.5, 137, 190, 55)  right = 217.5
+
+    arrangement="a-top": A full-width on row 1, B+C pair on row 2 (vertical
+    flip of ab-top; same group width/height, same shared right edge):
+
+        A: (27.5,  58, 190, 55)  right = 217.5
+        B: (27.5, 119, 85, 73)   right = 112.5
+        C: (132.5,119, 85, 73)   right = 217.5
 
     Page = layout_page_width_mm x layout_page_height_mm (245x250), the whole
     A+B+C group is centered both horizontally and vertically on the page.
@@ -1220,6 +1229,35 @@ def build_three_panel_graph(
     top_a = (page_h - group_h) / 2.0
     left_b = left_a + top_w + hgap
     top_c = top_a + top_h + vgap
+
+    if arrangement == "a-top":
+        # A spans the full width on row 1; B+C pair sits on row 2.
+        top_row2 = top_a + bot_h + vgap
+        geoms = [
+            (1, left_a, top_a, bot_w, bot_h),
+            (2, left_a, top_row2, top_w, top_h),
+            (3, left_b, top_row2, top_w, top_h),
+        ]
+        print(
+            "[THREE-PANEL ARRANGEMENT] a-top: A full-width on top, "
+            f"B/C on bottom (row1 top={top_a:.3f}, row2 top={top_row2:.3f})"
+        )
+    else:
+        # Default ab-top: A+B pair on row 1; C spans the full width on row 2.
+        if arrangement != "ab-top":
+            print(
+                f"[THREE-PANEL ARRANGEMENT] unknown arrangement "
+                f"'{arrangement}', falling back to ab-top."
+            )
+        geoms = [
+            (1, left_a, top_a, top_w, top_h),
+            (2, left_b, top_a, top_w, top_h),
+            (3, left_a, top_c, bot_w, bot_h),
+        ]
+        print(
+            "[THREE-PANEL ARRANGEMENT] ab-top: A/B on top, "
+            f"C full-width on bottom (row1 top={top_a:.3f}, row2 top={top_c:.3f})"
+        )
 
     try:
         gp = op.new_graph(template="Line")
@@ -1242,11 +1280,6 @@ def build_three_panel_graph(
     gp.activate()
     set_page_physical_size(op, page_w, page_h)
 
-    geoms = [
-        (1, left_a, top_a, top_w, top_h),
-        (2, left_b, top_a, top_w, top_h),
-        (3, left_a, top_c, bot_w, bot_h),
-    ]
     for idx, l, t, w, h in geoms:
         op.lt_exec(f"page.active={idx};")
         op.lt_exec(
@@ -1319,6 +1352,7 @@ def plot_three_panel_layout(
     out_dir: Path,
     figure_name: str,
     show_origin: bool = True,
+    arrangement: str = "ab-top",
 ) -> Dict[str, Optional[Path]]:
 
     try:
@@ -1347,7 +1381,7 @@ def plot_three_panel_layout(
 
     graph = build_three_panel_graph(
         op, wks_a, series_a, wks_b, series_b, wks_c, series_c,
-        cfg, layout_cfg, figure_name
+        cfg, layout_cfg, figure_name, arrangement=arrangement
     )
 
     # Save the full editable Origin project.
@@ -1381,9 +1415,10 @@ def plot_three_panel_layout(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Create a three-panel figure using Origin Layout Page. "
-            "A/B form a complete top graph page; C is a complete bottom graph page; "
-            "the two are stacked with symmetric outer Layout margins."
+            "Create a three-panel figure on ONE graph page with three layers "
+            "(deterministic mm geometry). Arrangement 'ab-top' (default) puts "
+            "A/B on the top row and full-width C on the bottom; 'a-top' puts "
+            "full-width A on the top and B/C on the bottom row."
         )
     )
 
@@ -1401,6 +1436,13 @@ def main() -> None:
     parser.add_argument("--figure-name", default="Fig1abc")
     parser.add_argument("--hide-origin", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--arrangement",
+        choices=["ab-top", "a-top"],
+        default="ab-top",
+        help="ab-top: A/B top row, C full-width bottom (default); "
+             "a-top: A full-width top, B/C bottom row.",
+    )
 
     args = parser.parse_args()
 
@@ -1428,11 +1470,9 @@ def main() -> None:
 
     print(
         "[THREE-PANEL LAYOUT CONFIG] "
-        f"layout={layout_cfg['layout_page_width_mm']}x"
-        f"{layout_cfg['layout_page_height_mm']} mm; "
-        f"source_width={layout_cfg['source_page_width_mm']} mm; "
-        f"outer_margins=(L/R={layout_cfg['layout_left_margin']}, "
-        f"T/B={layout_cfg['layout_top_margin']})"
+        f"arrangement={args.arrangement}; "
+        f"page={layout_cfg['layout_page_width_mm']}x"
+        f"{layout_cfg['layout_page_height_mm']} mm"
     )
 
     # Parse all three sources before Origin is called.
@@ -1463,6 +1503,7 @@ def main() -> None:
         excel_c, sheet_c,
         cfg, out_dir, args.figure_name,
         show_origin=(not args.hide_origin),
+        arrangement=args.arrangement,
     )
 
     print("Three-panel Layout plotting finished.")

@@ -11,7 +11,7 @@ description: 用 Origin 从 Excel 数据生成科研论文图，输出可编辑 
 
 - **稳定优先**：所有变动只发生在数据文件与 plot spec，**永不修改** `scripts/plot_origin*.py` 与 `config/style.yaml`。
 - **真相源**：数值样式以 `config/style.yaml` 为准；几何、流程、协议、错误恢复以 `references/baseline.md` 为准。
-- **三面板必须用单 Graph 页 3 图层架构**：显式 mm 几何（A/B 各 85×73、C 190×55、页 245×250、A 左缘 27.5mm、组垂直居中），三面板左/右边缘按构造必然对齐；禁止 g2layout/Layout Page/pfit2l。
+- **三面板必须用单 Graph 页 3 图层架构**：显式 mm 几何（页 245×250、组宽 190 高 134、左缘 27.5mm、组垂直居中），三面板右边缘按构造必然对齐；禁止 g2layout/Layout Page/pfit2l。布局由 `--arrangement` 选择：`ab-top`（默认，A/B 上排各 85×73、C 整宽 190×55 下排）或 `a-top`（A 整宽 190×55 上排、B/C 各 85×73 下排，几何见 baseline §13a）。
 - 轴标题用 LaTeX 文本对象（20pt），刻度标签保持 Origin 原生（Times New Roman 26pt）；不要双重转义反斜杠。
 
 ## 运行环境（本机已核验）
@@ -71,7 +71,7 @@ python scripts\prepare_origin_data.py --input raw\data.xlsx --sheet Data ^
 ```text
 单面板:   scripts\plot_origin.py            --excel <std.xlsx> --sheet Standard ...
 双面板:   scripts\plot_origin_two_panel.py  --excel-a <a.xlsx> --sheet-a Standard --excel-b <b.xlsx> --sheet-b Standard ...
-三面板:   scripts\plot_origin_three_panel.py --excel-a --sheet-a [--excel-b --sheet-b --excel-c --sheet-c] ...
+三面板:   scripts\plot_origin_three_panel.py --excel-a --sheet-a [--excel-b --sheet-b --excel-c --sheet-c] [--arrangement ab-top|a-top] ...
 
 公共参数: --config config\style.yaml  --output-dir <out>  --figure-name <Name>
           --hide-origin  隐藏 Origin 窗口
